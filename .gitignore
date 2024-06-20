@@ -1,2 +1,6 @@
 /__pycache__
 /venv
+/dynamic_photos
+tests.py
+modelling_notebook_v1.ipynb
+classes.py
