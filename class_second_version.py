@@ -339,12 +339,80 @@ class Model:
         images_for_gif[0].save(gif_path, save_all=True, append_images=images_for_gif[1:], optimize=False, duration=2000, loop=0)
         print(f"GIF saved at {gif_path}")
 
+import copy
+import json
+import multiprocessing as mp
+import os
+from datetime import datetime
+import csv
+
 class Experiment:
     def __init__(self, models, experiment_id):
+        """
+        Initializes the Experiment with a list of models and an experiment ID.
+        
+        Args:
+        models (List[Model]): The list of models to be used in the experiment.
+        experiment_id (str): The unique identifier for the experiment.
+        """
         self.models = models
         self.experiment_id = experiment_id
 
+    def create_model_copies(self, n):
+        """
+        Creates n independent copies of each model in self.models.
+        
+        Args:
+        n (int): The number of copies to create for each model.
+        
+        Returns:
+        None: Updates self.models with the original models and their copies.
+        """
+        all_models = []
+        for model in self.models:
+            for _ in range(n):
+                copied_model = Model(
+                    copy.deepcopy(model.field),
+                    copy.deepcopy(model.current_player),
+                    model.epsilon,
+                    model.beta,
+                    model.max_n,
+                    model.xg_early_stopping
+                )
+                all_models.append(copied_model)
+        self.models = all_models
+
+    def create_param_variations(self, param_name, step, num_steps):
+        """
+        Creates copies of the current models with variations in the specified parameter.
+        
+        Args:
+        param_name (str): The name of the parameter to vary.
+        step (float): The step size for each variation.
+        num_steps (int): The number of variations to create.
+        
+        Returns:
+        None: Updates self.models with the original models and their variations.
+        """
+        all_models = []
+        for model in self.models:
+            for i in range(num_steps):
+                new_param_value = getattr(model, param_name) + i * step
+                copied_model = copy.deepcopy(model)
+                setattr(copied_model, param_name, new_param_value)
+                all_models.append(copied_model)
+        self.models = all_models
+
     def run_simulation(self, model):
+        """
+        Runs the simulation for a given model using the metropolis algorithm.
+        
+        Args:
+        model (Model): The model to run the simulation on.
+        
+        Returns:
+        dict: A dictionary containing the results of the simulation.
+        """
         model.metropolis()
         return {
             'input_information': {
@@ -362,12 +430,27 @@ class Experiment:
         }
 
     def run(self):
+        """
+        Runs the experiment by executing simulations for all models in parallel.
+        
+        Returns:
+        None: Saves the results to a CSV file.
+        """
         with mp.Pool(mp.cpu_count() // 2) as pool:
             results = pool.map(self.run_simulation, self.models)
         
         self.save_results_to_csv(results)
     
     def save_results_to_csv(self, results):
+        """
+        Saves the results of the experiment to a CSV file.
+        
+        Args:
+        results (List[dict]): The list of dictionaries containing the results of the simulations.
+        
+        Returns:
+        None: Writes the results to a CSV file in the experiment_results directory.
+        """
         now = datetime.now().strftime("%d_%m_%Y_%H-%M-%S")
         directory = 'experiment_results'
         if not os.path.exists(directory):
@@ -384,3 +467,4 @@ class Experiment:
                 writer.writerow(result)
 
         print(f"Results saved to {filename}")
+
