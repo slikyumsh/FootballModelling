@@ -5,7 +5,6 @@ from PIL import Image, ImageDraw, ImageFont
 import json
 import multiprocessing as mp
 import random
-import numpy as np
 import copy
 import os
 import csv
@@ -83,14 +82,11 @@ class Field:
             'paths': self.paths.to_dict()
         }
 
-
-
 class FootballField:
     def __init__ (self, field):
         self.field = field
         self.players = []
 
-   
     def generate_player_id(self, player_id, team_id):
         return player_id + team_id * 100
     
@@ -112,32 +108,9 @@ class FootballField:
             player.player.id = self.generate_player_id(cnt, player.player.team_id)
             self.players.append(player)
 
-
     def add_two_teams(self, players1, players2):
         self.add_players(players1)
         self.add_players(players2)
-
-    
-    def show_pic_with_players(self):
-        image = Image.open( self.field.paths.background_image_path)
-        draw = ImageDraw.Draw(image)
-
-        team_colors = {1: 'blue', 2: 'red'}
-
-        for player in self.players:
-            x = player.position.pos_x
-            y = player.position.pos_y
-            team_id = player.player.team_id  
-            color = team_colors.get(team_id, 'gray')
-
-            draw.ellipse([(x - 15, y - 15), (x + 15, y + 15)], fill=color, outline=None)
-
-        new_pic_path = self.field.paths.output_path
-        image.save(new_pic_path)
-
-        plt.imshow(image)
-        plt.show()
-
 
     def to_dict(self):
         return {
@@ -146,10 +119,9 @@ class FootballField:
         }
 
 
-
+import uuid
 class Model:
-
-    def __init__ (self, field, player, epsilon, beta, max_n, max_xg):
+    def __init__(self, field, player, epsilon, beta, max_n, max_xg):
         self.field = field
         self.current_player = player
         self.epsilon = epsilon
@@ -174,13 +146,12 @@ class Model:
             return np.exp(- 3. * ((x1 - x2)**2 + (y1 - y2)**2)) * np.sin(np.arctan(abs((x1 - x2)/0.0001)))
         return np.exp(- 3. * ((x1 - x2)**2 + (y1 - y2)**2)) * np.sin(np.arctan(abs((x1 - x2)/(y1 - y2))))
     
-    def init_xg (self):
-        return self.calculate_xg((self.current_player.position.pos_x, self.current_player.position.pos_y),
-                                 (1500, 500))
-    
-    def init_start_positions (self):
+    def init_xg(self):
+        return self.calculate_xg((self.current_player.position.pos_x, self.current_player.position.pos_y), (1500, 500))
+
+    def init_start_positions(self):
         return copy.deepcopy(self.field.players)
-    
+
     def choose_players(self):
         result = []
         all_players = self.field.players
@@ -192,9 +163,9 @@ class Model:
     def init_dynamic_vector(self):
         result = []
         for i in range(0, 10):
-            result.append([0., 0.])  # Use list instead of tuple
+            result.append([0., 0.])
         return result
-    
+
     def calculate_dynamic_vector(self):
         all_players = self.field.players
         players = []
@@ -209,8 +180,7 @@ class Model:
             diff = np.sqrt(player.player.v ** 2 - shift_x ** 2)
             shift_y = np.random.uniform(-diff, diff)
             self.dynamic_vector[cnt][1] = shift_y
-            cnt += 1  # Ensure that cnt is incremented within the loop
-
+            cnt += 1
 
     def players_moving(self):
         players = self.active_players
@@ -224,7 +194,6 @@ class Model:
             player.position.pos_x = min(player.position.pos_x, 1500)
             player.position.pos_y = min(player.position.pos_y, 1000)
 
-
     def find_line_equation(self, x1, y1, x2, y2):
         if x2 - x1 == 0:
             m = (y2 - y1) / 0.0001
@@ -237,8 +206,19 @@ class Model:
         distance = np.abs(y1 - m * x1 - b) / np.sqrt(m**2 + 1)
         return distance
 
-    def choose_players_for_passing (self):
-        
+    def is_offside(self, receiving_player):
+        if receiving_player.player.team_id != 1:
+            return False
+
+        x_positions = [copy.deepcopy(player.position.pos_x) for player in self.field.players if player.player.team_id == 2]
+        second_last_defender_x = sorted(x_positions)[-2]
+    
+        if receiving_player.position.pos_x > second_last_defender_x:
+            print("OFFSIDE: ", receiving_player.player.team_id, " X: ", receiving_player.position.pos_x, " Enemy player X ", second_last_defender_x)
+            return True
+        return False
+
+    def choose_players_for_passing(self):
         result = []
 
         for player in self.active_players:
@@ -254,15 +234,14 @@ class Model:
                         opponent_player_x = opponent_player.position.pos_x
                         opponent_player_y = opponent_player.position.pos_y
                         distance = self.distance_from_point_to_line(opponent_player_x, opponent_player_y, m, b)
-                        if (distance < self.epsilon):
+                        if distance < self.epsilon:
                             intercepted = True
                 
-                if intercepted == False:
+                if not intercepted and not self.is_offside(player):
                     result.append(player)
 
         return result
-    
-    
+
     def mutation(self):
         partners = self.choose_players_for_passing()
         l = len(partners)
@@ -293,51 +272,121 @@ class Model:
         for player in self.active_players:
             player.position.pos_x += 200
 
+
+    def defense_pressing(self):
+        for defender in self.field.players:
+            if defender.player.team_id == 2 and defender.player.gk == False:
+                min_distance = float('inf')
+                closest_attacker = None
+                for attacker in self.active_players:
+                    distance = np.sqrt((defender.position.pos_x - attacker.position.pos_x) ** 2 + 
+                                       (defender.position.pos_y - attacker.position.pos_y) ** 2)
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_attacker = attacker
+
+                if closest_attacker:
+                    shift_x = np.random.uniform(0, defender.player.v)
+                    shift_y = np.random.uniform(0, defender.player.v)
+                    defender.position.pos_x += shift_x * np.sign(closest_attacker.position.pos_x - defender.position.pos_x)
+                    defender.position.pos_y += shift_y * np.sign(closest_attacker.position.pos_y - defender.position.pos_y)
+                    defender.position.pos_x = max(defender.position.pos_x, 0)
+                    defender.position.pos_y = max(defender.position.pos_y, 0)
+                    defender.position.pos_x = min(defender.position.pos_x, 1500)
+                    defender.position.pos_y = min(defender.position.pos_y, 1000)
+
     def metropolis(self):
         self.unique_players.append(self.current_player.player.id)
         self.attack()
         for i in range(0, self.max_n):
             self.unique_players.append(self.current_player.player.id)
             self.mutation()
+            self.defense_pressing()
             if self.current_xg >= self.xg_early_stopping:
                 print("Ended : ", i)
                 break
             self.calculate_dynamic_vector()
             self.players_moving()
             self.all_positions_by_iteration.append(copy.deepcopy(self.field.players))
+            print(f"Iteration {i}: Positions recorded")
         self.unique_players.append(self.current_player.player.id)
-        
-    def show_and_save_positions_gif(self):
-        if not os.path.exists('dynamic_photos'):
-            os.makedirs('dynamic_photos')
-        
-        images_for_gif = []
-    
-        for idx, players_state in enumerate(self.all_positions_by_iteration):
-            image = Image.open(self.field.field.paths.background_image_path)  # Убедитесь, что путь указан правильно
-            draw = ImageDraw.Draw(image)
-            team_colors = {1: 'blue', 2: 'red'}
-            font = ImageFont.truetype("arial.ttf", 15)  # Укажите путь к шрифту, если файл не в стандартной папке
 
-            # Идентификация игрока с мячом
+
+
+    def create_gif(self, frame_duration=500):
+        frames = []
+        font = ImageFont.truetype("arial.ttf", 15)  # Using a smaller font size
+
+        # Load background image
+        background_path = self.field.field.paths.background_image_path
+        if not os.path.exists(background_path):
+            print(f"Background image not found at {background_path}")
+            return
+        
+        background_image = Image.open(background_path)
+
+        for players_state in self.all_positions_by_iteration:
+            frame = background_image.copy()  # Create a copy of the background image for each frame
+            draw = ImageDraw.Draw(frame)
             ball_holder_id = self.current_player.player.id if self.current_player else None
 
             for player in players_state:
                 x = player.position.pos_x
                 y = player.position.pos_y
-                team_id = player.player.team_id  
+                team_id = player.player.team_id
                 player_id = player.player.id
-                color = 'yellow' if player_id == ball_holder_id else team_colors.get(team_id, 'gray')
-                draw.ellipse([(x - 15, y - 15), (x + 15, y + 15)], fill=color, outline='black')
-                draw.text((x - 10, y - 10), str(player_id), fill='white', font=font)
+
+                if team_id == 2:
+                    color = 'red'
+
+                elif player_id == ball_holder_id:
+                    color = 'black'
+                elif self.is_offside(player):
+                    color = 'green'
+                else:
+                    color = 'blue'
+
+                radius = 17  # Larger radius for better visibility
+                draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)], fill=color, outline='black')
+                draw.text((x - radius - 5, y - radius - 5), str(player_id), fill='white', font=font)
+
+            frames.append(frame)
     
-            frame_filename = f'dynamic_photos/frame_{idx}.png'
-            image.save(frame_filename)
-            images_for_gif.append(image)
-        
-        gif_path = 'dynamic_photos/players_animation.gif'
-        images_for_gif[0].save(gif_path, save_all=True, append_images=images_for_gif[1:], optimize=False, duration=2000, loop=0)
-        print(f"GIF saved at {gif_path}")
+        output_dir = "dynamics"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+       
+        gif_filename = f"{output_dir}/player_positions_{uuid.uuid4()}.gif"
+        frames[0].save(gif_filename, save_all=True, append_images=frames[1:], 
+                       duration=frame_duration, loop=0)
+        print(f"GIF saved at {gif_filename}")
+
+
+    def create_heatmap(self):
+        heatmap = np.zeros((1001, 1501))
+        for players_state in self.all_positions_by_iteration:
+            for player in players_state:
+                x = int(player.position.pos_x)
+                y = int(player.position.pos_y)
+                heatmap[y, x] += 100
+
+        plt.figure(figsize=(15, 10))
+        plt.imshow(heatmap, cmap='hot', interpolation='nearest')
+        plt.colorbar()
+        plt.title("Heatmap of Player Movements")
+        plt.xlabel("X Position")
+        plt.ylabel("Y Position")
+
+        output_dir = os.path.dirname(self.field.field.paths.output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        heatmap_path = "heatmap.png"
+        plt.savefig(heatmap_path)
+        plt.show()
+        print(f"Heatmap saved at {heatmap_path}")
+
+
 
 import copy
 import json
@@ -345,29 +394,12 @@ import multiprocessing as mp
 import os
 from datetime import datetime
 import csv
-
 class Experiment:
     def __init__(self, models, experiment_id):
-        """
-        Initializes the Experiment with a list of models and an experiment ID.
-        
-        Args:
-        models (List[Model]): The list of models to be used in the experiment.
-        experiment_id (str): The unique identifier for the experiment.
-        """
         self.models = models
         self.experiment_id = experiment_id
 
     def create_model_copies(self, n):
-        """
-        Creates n independent copies of each model in self.models.
-        
-        Args:
-        n (int): The number of copies to create for each model.
-        
-        Returns:
-        None: Updates self.models with the original models and their copies.
-        """
         all_models = []
         for model in self.models:
             for _ in range(n):
@@ -383,17 +415,6 @@ class Experiment:
         self.models = all_models
 
     def create_param_variations(self, param_name, step, num_steps):
-        """
-        Creates copies of the current models with variations in the specified parameter.
-        
-        Args:
-        param_name (str): The name of the parameter to vary.
-        step (float): The step size for each variation.
-        num_steps (int): The number of variations to create.
-        
-        Returns:
-        None: Updates self.models with the original models and their variations.
-        """
         all_models = []
         for model in self.models:
             for i in range(num_steps):
@@ -404,15 +425,6 @@ class Experiment:
         self.models = all_models
 
     def run_simulation(self, model):
-        """
-        Runs the simulation for a given model using the metropolis algorithm.
-        
-        Args:
-        model (Model): The model to run the simulation on.
-        
-        Returns:
-        dict: A dictionary containing the results of the simulation.
-        """
         model.metropolis()
         return {
             'input_information': {
@@ -430,27 +442,11 @@ class Experiment:
         }
 
     def run(self):
-        """
-        Runs the experiment by executing simulations for all models in parallel.
-        
-        Returns:
-        None: Saves the results to a CSV file.
-        """
         with mp.Pool(mp.cpu_count() // 2) as pool:
             results = pool.map(self.run_simulation, self.models)
-        
         self.save_results_to_csv(results)
     
     def save_results_to_csv(self, results):
-        """
-        Saves the results of the experiment to a CSV file.
-        
-        Args:
-        results (List[dict]): The list of dictionaries containing the results of the simulations.
-        
-        Returns:
-        None: Writes the results to a CSV file in the experiment_results directory.
-        """
         now = datetime.now().strftime("%d_%m_%Y_%H-%M-%S")
         directory = 'experiment_results'
         if not os.path.exists(directory):
@@ -468,3 +464,4 @@ class Experiment:
 
         print(f"Results saved to {filename}")
 
+    
