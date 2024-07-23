@@ -120,6 +120,7 @@ class FootballField:
 
 
 import uuid
+import matplotlib.colors as mcolors
 class Model:
     def __init__(self, field, player, epsilon, beta, max_n, max_xg):
         self.field = field
@@ -381,29 +382,45 @@ class Model:
 
 
 
-    def create_heatmap(self):
-        heatmap = np.zeros((1001, 1501))
-        for players_state in self.all_positions_by_iteration:
+    def create_heatmap(self, radius=20, output_path="heatmap_with_legend.png"):
+        # Убедитесь, что фон загружен
+        background_path = self.field.field.paths.background_image_path
+        if not os.path.exists(background_path):
+            print(f"Фоновое изображение не найдено по пути {background_path}")
+            return
+        
+        # Загрузите фоновое изображение
+        background_image = Image.open(background_path)
+        heatmap = np.zeros((background_image.height, background_image.width))
+        
+        # Соберите данные перемещений атакующих игроков
+        for football_field in self.all_positions_by_iteration:
+            players_state = football_field.players if isinstance(football_field, FootballField) else football_field
             for player in players_state:
-                x = int(player.position.pos_x)
-                y = int(player.position.pos_y)
-                heatmap[y, x] += 100
+                if player.player.team_id == 1:  # Предполагаем, что команда 1 атакующая
+                    x = int(player.position.pos_x)
+                    y = int(player.position.pos_y)
+                    cv2.circle(heatmap, (x, y), radius, 1, thickness=-1)
+        
+        # Примените размытие к тепловой карте
+        heatmap = cv2.GaussianBlur(heatmap, (0, 0), sigmaX=radius, sigmaY=radius)
+        
+        # Нормализуйте тепловую карту
+        heatmap = np.clip(heatmap / heatmap.max(), 0, 1)
+        
+        # Преобразуйте тепловую карту в цветовую карту
+        heatmap_color = cv2.applyColorMap((heatmap * 255).astype(np.uint8), cv2.COLORMAP_HOT)
+        
+        # Преобразуйте тепловую карту в формат PIL и наложите на фоновое изображение
+        heatmap_image = Image.fromarray(heatmap_color)
+        combined_image = Image.alpha_composite(background_image.convert("RGBA"), heatmap_image.convert("RGBA"))
+        
+        # Сохраните итоговое изображение с тепловой картой
+        combined_image_path = "combined_" + output_path
+        combined_image.save(combined_image_path)
+        
 
-        plt.figure(figsize=(15, 10))
-        plt.imshow(heatmap, cmap='hot', interpolation='nearest')
-        plt.colorbar()
-        plt.title("Heatmap of Player Movements")
-        plt.xlabel("X Position")
-        plt.ylabel("Y Position")
 
-        output_dir = os.path.dirname(self.field.field.paths.output_path)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-
-        heatmap_path = "heatmap.png"
-        plt.savefig(heatmap_path)
-        plt.show()
-        print(f"Heatmap saved at {heatmap_path}")
 
 
 
