@@ -136,6 +136,7 @@ class Model:
         self.all_positions_by_iteration = []
         self.all_positions_by_iteration.append(self.init_start_positions())
         self.cnt_passes = 0
+        self.ball_holders = []  # Новый атрибут для хранения игроков с мячом
 
     def calculate_xg(self, player_coords, post_center):
         x1 = player_coords[0] / 1500
@@ -214,7 +215,6 @@ class Model:
         second_last_defender_x = sorted(x_positions)[-2]
     
         if receiving_player.position.pos_x > second_last_defender_x:
-            print("OFFSIDE: ", receiving_player.player.team_id, " X: ", receiving_player.position.pos_x, " Enemy player X ", second_last_defender_x)
             return True
         return False
 
@@ -247,6 +247,7 @@ class Model:
         l = len(partners)
         print("Cur player: ", self.current_player.player.id)
         print("Partners number: " , l)
+        accepted_combination = False  # Флаг для отслеживания принятой комбинации
         for _ in range(0, 2 * l):
             id = np.random.randint(0, l)
             chosen_player = partners[id]
@@ -257,6 +258,7 @@ class Model:
                 self.current_player = chosen_player
                 self.current_xg = xg
                 self.cnt_passes += 1
+                accepted_combination = True  # Обновляем флаг
                 print("Accepted full")
                 return
             else:
@@ -264,9 +266,13 @@ class Model:
                 if np.exp((xg - self.current_xg) * self.beta) > random_number:
                     self.current_player = chosen_player
                     self.current_xg = xg
-                    print("Accepted part")
                     self.cnt_passes += 1
+                    accepted_combination = True  # Обновляем флаг
+                    print("Accepted part")
                     return
+        
+        if not accepted_combination:
+            print("No accepted combination")
 
     def attack (self):
         for player in self.active_players:
@@ -297,9 +303,11 @@ class Model:
 
     def metropolis(self):
         self.unique_players.append(self.current_player.player.id)
+        self.ball_holders.append(self.current_player.player.id)  # Сохраняем текущего игрока с мячом
         self.attack()
         for i in range(0, self.max_n):
             self.unique_players.append(self.current_player.player.id)
+            self.ball_holders.append(self.current_player.player.id)  # Сохраняем текущего игрока с мячом
             self.mutation()
             self.defense_pressing()
             if self.current_xg >= self.xg_early_stopping:
@@ -310,25 +318,26 @@ class Model:
             self.all_positions_by_iteration.append(copy.deepcopy(self.field.players))
             print(f"Iteration {i}: Positions recorded")
         self.unique_players.append(self.current_player.player.id)
+        self.ball_holders.append(self.current_player.player.id) 
 
 
 
     def create_gif(self, frame_duration=500):
         frames = []
-        font = ImageFont.truetype("arial.ttf", 15)  # Using a smaller font size
+        font = ImageFont.truetype("arial.ttf", 15)  # Используем меньший размер шрифта
 
-        # Load background image
+        # Загружаем фоновое изображение
         background_path = self.field.field.paths.background_image_path
         if not os.path.exists(background_path):
-            print(f"Background image not found at {background_path}")
+            print(f"Фоновое изображение не найдено по пути {background_path}")
             return
         
         background_image = Image.open(background_path)
 
-        for players_state in self.all_positions_by_iteration:
-            frame = background_image.copy()  # Create a copy of the background image for each frame
+        for i, players_state in enumerate(self.all_positions_by_iteration):
+            frame = background_image.copy()  # Создаем копию фонового изображения для каждого кадра
             draw = ImageDraw.Draw(frame)
-            ball_holder_id = self.current_player.player.id if self.current_player else None
+            ball_holder_id = self.ball_holders[i] if i < len(self.ball_holders) else None
 
             for player in players_state:
                 x = player.position.pos_x
@@ -346,7 +355,7 @@ class Model:
                 else:
                     color = 'blue'
 
-                radius = 17  # Larger radius for better visibility
+                radius = 17  # Увеличиваем радиус для лучшей видимости
                 draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)], fill=color, outline='black')
                 draw.text((x - radius - 5, y - radius - 5), str(player_id), fill='white', font=font)
 
@@ -359,7 +368,7 @@ class Model:
         gif_filename = f"{output_dir}/player_positions_{uuid.uuid4()}.gif"
         frames[0].save(gif_filename, save_all=True, append_images=frames[1:], 
                        duration=frame_duration, loop=0)
-        print(f"GIF saved at {gif_filename}")
+        print(f"GIF сохранен по пути {gif_filename}")
 
 
     def create_heatmap(self):
