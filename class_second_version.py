@@ -281,27 +281,91 @@ class Model:
             player.position.pos_x += 200
 
 
+   
     def defense_pressing(self):
-        for defender in self.field.players:
-            if defender.player.team_id == 2 and defender.player.gk == False:
-                min_distance = float('inf')
-                closest_attacker = None
-                for attacker in self.active_players:
-                    distance = np.sqrt((defender.position.pos_x - attacker.position.pos_x) ** 2 + 
-                                       (defender.position.pos_y - attacker.position.pos_y) ** 2)
-                    if distance < min_distance:
-                        min_distance = distance
-                        closest_attacker = attacker
+        '''
+        Учет максимальной скорости защитников: Защитники перемещаются в пределах своей максимальной скорости, ограничивая их движения по горизонтали и вертикали.
+        Передача игроков и возврат к позиции: Защитники передают игроков, ориентируясь на ближайшего атакующего, и возвращаются к исходной позиции, если нет атакующих в пределах их зоны ответственности.
+        Изменение позиции линии обороны: Линия обороны поднимается выше, если мяч далеко от ворот, и опускается ниже, если мяч близок к воротам.
+        Сжатие по оси X: Если мяч близок к воротам, защитники сжимаются по оси X, уменьшая разницу между максимальным и минимальным X.
+        '''
 
-                if closest_attacker:
-                    shift_x = np.random.uniform(0, defender.player.v)
-                    shift_y = np.random.uniform(0, defender.player.v)
-                    defender.position.pos_x += shift_x * np.sign(closest_attacker.position.pos_x - defender.position.pos_x)
-                    defender.position.pos_y += shift_y * np.sign(closest_attacker.position.pos_y - defender.position.pos_y)
-                    defender.position.pos_x = max(defender.position.pos_x, 0)
-                    defender.position.pos_y = max(defender.position.pos_y, 0)
-                    defender.position.pos_x = min(defender.position.pos_x, 1500)
-                    defender.position.pos_y = min(defender.position.pos_y, 1000)
+        defenders = [player for player in self.field.players if player.player.team_id == 2 and not player.player.gk]
+        attackers = [player for player in self.active_players if not self.is_offside(player, self.field.players, self.current_player)]
+
+        if not attackers:
+            return
+
+        # Сортируем защитников по позиции X, чтобы сохранить их расположение по ширине
+        defenders.sort(key=lambda x: x.position.pos_x)
+        avg_defense_y = np.mean([defender.position.pos_y for defender in defenders])
+        defense_line_y = avg_defense_y
+
+        # Позиция мяча (текущего игрока)
+        ball_position = (self.current_player.position.pos_x, self.current_player.position.pos_y)
+
+        for defender in defenders:
+            closest_attacker = None
+            min_distance = float('inf')
+
+            # Найти ближайшего атакующего
+            for attacker in attackers:
+                distance = np.sqrt((defender.position.pos_x - attacker.position.pos_x) ** 2 +
+                                   (defender.position.pos_y - attacker.position.pos_y) ** 2)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_attacker = attacker
+
+            if closest_attacker:
+                move_x = closest_attacker.position.pos_x - defender.position.pos_x
+                move_y = closest_attacker.position.pos_y - defender.position.pos_y
+                distance = np.sqrt(move_x**2 + move_y**2)
+
+                if distance > defender.player.v:
+                    move_x = (move_x / distance) * defender.player.v
+                    move_y = (move_y / distance) * defender.player.v
+
+                defender.position.pos_x += move_x
+                defender.position.pos_y += move_y
+
+                # Ограничение перемещений защитников по горизонтали, чтобы они сохраняли равные промежутки
+                defender_index = defenders.index(defender)
+                if defender_index > 0:
+                    left_neighbor = defenders[defender_index - 1]
+                    min_x = left_neighbor.position.pos_x + 50  # Минимальное расстояние между защитниками
+                    defender.position.pos_x = max(defender.position.pos_x, min_x)
+                if defender_index < len(defenders) - 1:
+                    right_neighbor = defenders[defender_index + 1]
+                    max_x = right_neighbor.position.pos_x - 50  # Минимальное расстояние между защитниками
+                    defender.position.pos_x = min(defender.position.pos_x, max_x)
+
+                defender.position.pos_x = max(defender.position.pos_x, 0)
+                defender.position.pos_y = max(defender.position.pos_y, 0)
+                defender.position.pos_x = min(defender.position.pos_x, 1500)
+                defender.position.pos_y = min(defender.position.pos_y, 1000)
+
+        # Обновление позиции линии обороны в зависимости от позиции мяча
+        if ball_position[1] < 800:  # Если мяч далеко от ворот (например, дальше чем 700 по оси Y)
+            defense_line_y -= 200  # Поднимаем линию обороны выше
+        elif ball_position[1] > 1100:  # Если мяч близко к воротам (например, ближе чем 300 по оси Y)
+            defense_line_y += 200  # Опускаем линию обороны ниже
+
+        # Сжимаем линию обороны по оси X, если мяч близок к воротам
+        if ball_position[1] > 1100:
+            min_defender_x = min([defender.position.pos_x for defender in defenders])
+            max_defender_x = max([defender.position.pos_x for defender in defenders])
+            center_x = (min_defender_x + max_defender_x) / 2
+
+            for defender in defenders:
+                target_x = center_x + (defender.position.pos_x - center_x) * 0.9  # Сжимаем расстояние между защитниками
+                move_x = target_x - defender.position.pos_x
+                if abs(move_x) > defender.player.v:
+                    move_x = np.sign(move_x) * defender.player.v  # Ограничиваем перемещение по скорости
+
+                defender.position.pos_x += move_x
+                defender.position.pos_x = max(defender.position.pos_x, 0)
+                defender.position.pos_x = min(defender.position.pos_x, 1500)
+
 
     def metropolis(self):
         self.unique_players.append(self.current_player.player.id)
@@ -419,10 +483,6 @@ class Model:
         combined_image_path = "combined_" + output_path
         combined_image.save(combined_image_path)
         
-
-
-
-
 
 import copy
 import json
