@@ -372,6 +372,8 @@ class Model:
         self.ball_holders.append(self.current_player.player.id)  # Сохраняем текущего игрока с мячом
         self.attack()
         for i in range(0, self.max_n):
+            if self.current_xg >= self.xg_early_stopping:
+                break
             self.unique_players.append(self.current_player.player.id)
             self.ball_holders.append(self.current_player.player.id)  # Сохраняем текущего игрока с мячом
             self.mutation()
