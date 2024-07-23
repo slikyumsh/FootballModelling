@@ -207,16 +207,17 @@ class Model:
         distance = np.abs(y1 - m * x1 - b) / np.sqrt(m**2 + 1)
         return distance
 
-    def is_offside(self, receiving_player):
+    def is_offside(self, receiving_player, players, current_player):
         if receiving_player.player.team_id != 1:
             return False
+        x_positions = [player.position.pos_x for player in players if player.player.team_id == 2 and not player.player.gk]
+        second_last_defender_x = sorted(x_positions)[-1]
 
-        x_positions = [copy.deepcopy(player.position.pos_x) for player in self.field.players if player.player.team_id == 2]
-        second_last_defender_x = sorted(x_positions)[-2]
-    
-        if receiving_player.position.pos_x > second_last_defender_x:
+        if receiving_player.position.pos_x > second_last_defender_x and receiving_player.position.pos_x > current_player.position.pos_x:
             return True
         return False
+
+
 
     def choose_players_for_passing(self):
         result = []
@@ -237,7 +238,7 @@ class Model:
                         if distance < self.epsilon:
                             intercepted = True
                 
-                if not intercepted and not self.is_offside(player):
+                if not intercepted and not self.is_offside(player, self.field.players, self.current_player):
                     result.append(player)
 
         return result
@@ -315,7 +316,7 @@ class Model:
                 break
             self.calculate_dynamic_vector()
             self.players_moving()
-            self.all_positions_by_iteration.append(copy.deepcopy(self.field.players))
+            self.all_positions_by_iteration.append(copy.deepcopy(self.field))
             print(f"Iteration {i}: Positions recorded")
         self.unique_players.append(self.current_player.player.id)
         self.ball_holders.append(self.current_player.player.id) 
@@ -334,10 +335,12 @@ class Model:
         
         background_image = Image.open(background_path)
 
-        for i, players_state in enumerate(self.all_positions_by_iteration):
+        for i, football_field in enumerate(self.all_positions_by_iteration):
+            players_state = football_field.players if isinstance(football_field, FootballField) else football_field
             frame = background_image.copy()  # Создаем копию фонового изображения для каждого кадра
             draw = ImageDraw.Draw(frame)
             ball_holder_id = self.ball_holders[i] if i < len(self.ball_holders) else None
+            current_player = next((player for player in players_state if player.player.id == ball_holder_id), None)
 
             for player in players_state:
                 x = player.position.pos_x
@@ -347,28 +350,35 @@ class Model:
 
                 if team_id == 2:
                     color = 'red'
-
                 elif player_id == ball_holder_id:
                     color = 'black'
-                elif self.is_offside(player):
+                elif self.is_offside(player, players_state, current_player):
                     color = 'green'
                 else:
                     color = 'blue'
 
                 radius = 17  # Увеличиваем радиус для лучшей видимости
                 draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)], fill=color, outline='black')
-                draw.text((x - radius - 5, y - radius - 5), str(player_id), fill='white', font=font)
+
+                text = str(player_id % 100)
+                text_bbox = draw.textbbox((0, 0), text, font=font)
+                text_width = text_bbox[2] - text_bbox[0]
+                text_height = text_bbox[3] - text_bbox[1]
+                text_x = x - text_width / 2
+                text_y = y - text_height / 2
+                draw.text((text_x, text_y), text, fill='white', font=font)
 
             frames.append(frame)
-    
+
         output_dir = "dynamics"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-       
+
         gif_filename = f"{output_dir}/player_positions_{uuid.uuid4()}.gif"
         frames[0].save(gif_filename, save_all=True, append_images=frames[1:], 
-                       duration=frame_duration, loop=0)
+                    duration=frame_duration, loop=0)
         print(f"GIF сохранен по пути {gif_filename}")
+
 
 
     def create_heatmap(self):
