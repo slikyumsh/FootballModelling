@@ -144,9 +144,9 @@ class Model:
         x2 = post_center[0] / 1500
         y1 = player_coords[1] / 1000
         y2 = post_center[1] / 1000
-        if y1 - y2 == 0:
-            return np.exp(- 3. * ((x1 - x2)**2 + (y1 - y2)**2)) * np.sin(np.arctan(abs((x1 - x2)/0.0001)))
-        return np.exp(- 3. * ((x1 - x2)**2 + (y1 - y2)**2)) * np.sin(np.arctan(abs((x1 - x2)/(y1 - y2))))
+        x = abs(x1 - x2) * 100
+        y = abs(y2 - y1) * 100
+        return np.exp(-12.1034 + 0.103273 * y - 0.0585 * abs(x)) / (1 + np.exp(-12.1032 + 0.103273 * y - 0.0585 * abs(x)))
     
     def init_xg(self):
         return self.calculate_xg((self.current_player.position.pos_x, self.current_player.position.pos_y), (1500, 500))
