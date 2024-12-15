@@ -447,43 +447,50 @@ class Model:
         print(f"GIF сохранен по пути {gif_filename}")
 
 
-
-    def create_heatmap(self, radius=20, output_path="heatmap_with_legend.png"):
-        # Убедитесь, что фон загружен
+    def create_heatmap(self, radius=20, output_path="heatmap_with_ball_focus.png"):
+        
         background_path = self.field.field.paths.background_image_path
         if not os.path.exists(background_path):
             print(f"Фоновое изображение не найдено по пути {background_path}")
             return
-        
-        # Загрузите фоновое изображение
-        background_image = Image.open(background_path)
-        heatmap = np.zeros((background_image.height, background_image.width))
-        
-        # Соберите данные перемещений атакующих игроков
-        for football_field in self.all_positions_by_iteration:
+
+        background_image = Image.open(background_path).convert("RGBA")
+        heatmap = np.zeros((background_image.height, background_image.width), dtype=np.float32)
+
+        for idx, football_field in enumerate(self.all_positions_by_iteration):
             players_state = football_field.players if isinstance(football_field, FootballField) else football_field
-            for player in players_state:
-                if player.player.team_id == 1:  # Предполагаем, что команда 1 атакующая
-                    x = int(player.position.pos_x)
-                    y = int(player.position.pos_y)
-                    cv2.circle(heatmap, (x, y), radius, 1, thickness=-1)
-        
-        # Примените размытие к тепловой карте
+            ball_holder_id = self.ball_holders[idx] if idx < len(self.ball_holders) else None
+            ball_holder = next((player for player in players_state if player.player.id == ball_holder_id), None)
+
+            if ball_holder:
+                x = int(ball_holder.position.pos_x)
+                y = int(ball_holder.position.pos_y)
+                cv2.circle(heatmap, (x, y), radius, 1, thickness=-1)
+
         heatmap = cv2.GaussianBlur(heatmap, (0, 0), sigmaX=radius, sigmaY=radius)
-        
-        # Нормализуйте тепловую карту
-        heatmap = np.clip(heatmap / heatmap.max(), 0, 1)
-        
-        # Преобразуйте тепловую карту в цветовую карту
-        heatmap_color = cv2.applyColorMap((heatmap * 255).astype(np.uint8), cv2.COLORMAP_HOT)
-        
-        # Преобразуйте тепловую карту в формат PIL и наложите на фоновое изображение
-        heatmap_image = Image.fromarray(heatmap_color)
-        combined_image = Image.alpha_composite(background_image.convert("RGBA"), heatmap_image.convert("RGBA"))
-        
-        # Сохраните итоговое изображение с тепловой картой
-        combined_image_path = "combined_" + output_path
+        heatmap = np.clip(heatmap / heatmap.max(), 0, 1)  # Нормализация до [0, 1]
+
+        heatmap_colored = np.zeros((heatmap.shape[0], heatmap.shape[1], 4), dtype=np.uint8)
+        for i in range(heatmap.shape[0]):
+            for j in range(heatmap.shape[1]):
+                intensity = heatmap[i, j]
+                if intensity > 0:  
+                    r = 255
+                    g = int(255 * (1 - intensity))  
+                    b = 0
+                    a = int(255 * intensity)  
+                    heatmap_colored[i, j] = (r, g, b, a)
+                else:  
+                    heatmap_colored[i, j] = (0, 0, 0, 0)
+
+        heatmap_image = Image.fromarray(heatmap_colored, "RGBA")
+        combined_image = Image.alpha_composite(background_image, heatmap_image)
+
+        combined_image_path = "ball_focus_" + output_path
         combined_image.save(combined_image_path)
+        print(f"Heatmap saved to {combined_image_path}")
+
+
         
 
 import copy
