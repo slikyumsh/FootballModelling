@@ -132,10 +132,6 @@ ruff check . --fix
 
 ---
 
-## Citation
-
-If you use this repository in academic work, please cite the accompanying paper.
-
 ### BibTeX
 
 ```bibtex
