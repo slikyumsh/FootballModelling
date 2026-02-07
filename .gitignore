@@ -1,8 +1,74 @@
-/__pycache__
-/venv
-/dynamic_photos
-tests.py
-modelling_notebook_v1.ipynb
-classes.py
-dynamics
-experiment_results
+# =========================
+# Python / Packaging
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+
+build/
+dist/
+*.egg-info/
+.eggs/
+*.whl
+
+# Ruff / type checkers
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+*.nbconvert.*
+
+# (optional) if you keep notebooks but don't want outputs committed:
+# **/notebooks/**/.ipynb_checkpoints/
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+Thumbs.db
+
+.vscode/
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+
+.idea/
+*.iml
+
+# =========================
+# Project outputs / artifacts
+# =========================
+artifacts/
+outputs/
+reports/
+logs/
+tmp/
+
+# Generated images / videos from runs (if you create them elsewhere)
+*.gif
+*.mp4
+*.avi
+
+# =========================
+# Data (keep raw data out of git unless you want it)
+# =========================
+data/
+*.csv
+*.parquet
+*.feather
+*.pkl
+*.pickle
+*.joblib
+*.npz
+*.npy
