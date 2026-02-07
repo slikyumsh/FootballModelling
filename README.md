@@ -131,17 +131,6 @@ ruff check . --fix
 ```
 
 ---
-
-### BibTeX
-
-```bibtex
-@article{evtyukhov2025metropolis,
-  title   = {Metropolis algorithm for simulating football combinations},
-  author  = {Evtyukhov, Dmitrii and Fedotov, Daniil},
-  year    = {2025}
-}
-```
-
   
 ## License
 Apache-2.0
