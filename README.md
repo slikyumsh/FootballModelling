@@ -146,12 +146,6 @@ If you use this repository in academic work, please cite the accompanying paper.
 }
 ```
 
-### Suggested text citation
-
-Evtyukhov, D., & Fedotov, D. (2025). *Metropolis algorithm for simulating football combinations*.
-
----
-
+  
 ## License
-
-Add a LICENSE file if you plan to distribute or reuse this code broadly (MIT or Apache-2.0 are common choices for research code).
+Apache-2.0
