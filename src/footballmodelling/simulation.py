@@ -1,4 +1,4 @@
-"""Metropolis–Hastings simulation of an attacking sequence."""
+"""Metropolis-inspired simulation of an attacking sequence."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import copy
 import logging
 import math
 import random
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable
 
 import numpy as np
 
@@ -15,10 +15,6 @@ from .defense import DefenseParams, is_offside, pass_is_intercepted, pressing_st
 from .domain import Pitch, PlayerOnPitch, Position
 from .exceptions import SimulationError
 from .xg import Goal, SimpleLogisticXG
-
-from dataclasses import dataclass
-from typing import Optional, Sequence
-
 
 class BetaPolicy:
     """Callable policy returning beta_t at a given simulation step.
@@ -62,7 +58,7 @@ class PiecewiseStepBeta(BetaPolicy):
 class DiscreteBetaSampler(BetaPolicy):
     """Sample beta_t i.i.d. from a discrete distribution each step."""
     values: Sequence[float]
-    probs: Optional[Sequence[float]] = None
+    probs: Sequence[float] | None = None
 
     def __post_init__(self) -> None:
         if not self.values:
@@ -93,25 +89,34 @@ class SimulationResult:
     iterations: int
     unique_ball_holders: int
     ball_holders: list[int]
+    screened_candidates: int
+    candidate_options: int
+
+    @property
+    def screened_candidate_rate(self) -> float:
+        """Fraction of post-offside-filter candidates screened out geometrically."""
+        if self.candidate_options == 0:
+            return 0.0
+        return self.screened_candidates / self.candidate_options
 
 
 class MetropolisAttackSimulator:
-    """Simulate an attacking possession using a Metropolis–Hastings acceptance rule."""
+    """Simulate an attacking possession using a Metropolis-inspired acceptance rule."""
 
     def __init__(
-    self,
-    pitch: Pitch,
-    ball_holder: PlayerOnPitch,
-    epsilon: float,
-    beta: float,
-    max_steps: int,
-    xg_early_stop: float,
-    attack_shift_x: float = 200.0,
-    attacking_team: int = 1,
-    defending_team: int = 2,
-    goal: Position | None = None,
-    rng_seed: int | None = None,
-    beta_policy: Callable[[int, float, float], float] | None = None,
+        self,
+        pitch: Pitch,
+        ball_holder: PlayerOnPitch,
+        epsilon: float,
+        beta: float,
+        max_steps: int,
+        xg_early_stop: float,
+        attack_shift_x: float = 200.0,
+        attacking_team: int = 1,
+        defending_team: int = 2,
+        goal: Position | None = None,
+        rng_seed: int | None = None,
+        beta_policy: Callable[[int, float, float], float] | None = None,
     ) -> None:
         if rng_seed is not None:
             random.seed(rng_seed)
@@ -124,7 +129,7 @@ class MetropolisAttackSimulator:
 
         self.defense = DefenseParams(interception_radius=epsilon)
         self.beta = float(beta)
-        self.beta_policy = beta_policy  # <-- ADD
+        self.beta_policy = beta_policy
 
         self.max_steps = int(max_steps)
         self.xg_early_stop = float(xg_early_stop)
@@ -143,6 +148,8 @@ class MetropolisAttackSimulator:
         self.beta_trace: list[float] = []
         self.xg_trace: list[float] = [self.current_xg]
         self._beta_last: float = self.beta
+        self.screened_candidates = 0
+        self.candidate_options = 0
 
 
     def _candidate_receivers(self) -> list[PlayerOnPitch]:
@@ -153,7 +160,9 @@ class MetropolisAttackSimulator:
                 continue
             if is_offside(p, self.pitch, self.ball_holder, self.defending_team):
                 continue
+            self.candidate_options += 1
             if pass_is_intercepted(self.ball_holder, p, self.pitch, self.defending_team, self.defense):
+                self.screened_candidates += 1
                 continue
             receivers.append(p)
         return receivers
@@ -288,4 +297,6 @@ class MetropolisAttackSimulator:
             iterations=len(self.snapshots),
             unique_ball_holders=unique,
             ball_holders=self.ball_holders,
+            screened_candidates=self.screened_candidates,
+            candidate_options=self.candidate_options,
         )

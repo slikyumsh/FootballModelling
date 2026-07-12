@@ -26,6 +26,7 @@ class ExperimentRow:
     passes: int
     iterations: int
     final_xg: float
+    screened_candidate_rate: float
 
 
 def _run_one(sim: MetropolisAttackSimulator) -> ExperimentRow:
@@ -44,6 +45,7 @@ def _run_one(sim: MetropolisAttackSimulator) -> ExperimentRow:
         passes=res.passes,
         iterations=res.iterations,
         final_xg=res.final_xg,
+        screened_candidate_rate=res.screened_candidate_rate,
     )
 
 
@@ -56,7 +58,14 @@ def save_rows_csv(rows: list[ExperimentRow], out_dir: Path, experiment_id: str) 
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["input_information", "unique_players", "passes", "iterations", "final_xg"],
+            fieldnames=[
+                "input_information",
+                "unique_players",
+                "passes",
+                "iterations",
+                "final_xg",
+                "screened_candidate_rate",
+            ],
         )
         writer.writeheader()
         for r in rows:
@@ -67,6 +76,7 @@ def save_rows_csv(rows: list[ExperimentRow], out_dir: Path, experiment_id: str) 
                     "passes": r.passes,
                     "iterations": r.iterations,
                     "final_xg": r.final_xg,
+                    "screened_candidate_rate": r.screened_candidate_rate,
                 }
             )
 
