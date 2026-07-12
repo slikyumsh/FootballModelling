@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .domain import Pitch, PlayerOnPitch
-from .geometry import distance_point_to_line, line_through_points
+from .domain import FIELD_HEIGHT, FIELD_WIDTH, Pitch, PlayerOnPitch
+from .geometry import distance_point_to_segment
 
 
 @dataclass(frozen=True)
@@ -15,6 +15,8 @@ class DefenseParams:
 
     interception_radius: float
     min_horizontal_gap: float = 50.0
+    compression_threshold: float | None = None
+    compression_factor: float = 1.0
 
 
 def is_offside(
@@ -57,15 +59,16 @@ def pass_is_intercepted(
     defending_team: int,
     params: DefenseParams,
 ) -> bool:
-    """Return True if the pass line is within interception radius of any defender."""
-    line = line_through_points(
-        receiver.position.x,
-        receiver.position.y,
-        passer.position.x,
-        passer.position.y,
-    )
+    """Return True if the pass segment is within interception radius of a defender."""
     for defender in pitch.defenders(defending_team):
-        d = distance_point_to_line(defender.position.x, defender.position.y, line)
+        d = distance_point_to_segment(
+            defender.position.x,
+            defender.position.y,
+            passer.position.x,
+            passer.position.y,
+            receiver.position.x,
+            receiver.position.y,
+        )
         if d < params.interception_radius:
             return True
     return False
@@ -124,6 +127,17 @@ def pressing_step(
             right = defenders[idx + 1]
             defender.position.x = min(
                 defender.position.x, right.position.x - params.min_horizontal_gap
+            )
+
+        if (
+            params.compression_threshold is not None
+            and ball_holder.position.x >= params.compression_threshold
+            and params.compression_factor < 1.0
+        ):
+            kappa = max(params.compression_factor, 0.0)
+            defender.position.x = FIELD_WIDTH - kappa * (FIELD_WIDTH - defender.position.x)
+            defender.position.y = FIELD_HEIGHT / 2.0 + kappa * (
+                defender.position.y - FIELD_HEIGHT / 2.0
             )
 
         defender.position.clamp_to_field()
